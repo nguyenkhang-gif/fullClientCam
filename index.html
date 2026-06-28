@@ -191,13 +191,14 @@
     <h2 id="step1-title">1. Tạo phòng</h2>
     <div class="row">
       <button id="btn-start">🚪 Tạo phòng</button>
+      <button id="btn-fs-top" class="secondary" style="display:none;">⛶ Fullscreen</button>
       <select id="cfg-facing">
         <option value="user">🤳 Cam trước</option>
         <option value="environment">📷 Cam sau</option>
       </select>
       <select id="quality">
-        <option value="hd">HD 1280×720</option>
-        <option value="sd" selected>SD 640×360</option>
+        <option value="hd" selected>HD 1280×720</option>
+        <option value="sd">SD 640×360</option>
       </select>
       <select id="cfg-fps">
         <option value="15">15 fps</option>
@@ -297,6 +298,7 @@
     localPlaceholder: $("local-placeholder"),
     remotePlaceholder: $("remote-placeholder"),
     btnFullscreen: $("btn-fullscreen"),
+    btnFsTop: $("btn-fs-top"),
     step1Title: $("step1-title"),
     step1Hint: $("step1-hint"),
     btnStart: $("btn-start"),
@@ -375,6 +377,8 @@
     els.controlsCard.classList.toggle("hidden", !showLocal);
     // Camera config chỉ cần khi thiết bị này bật cam
     [els.cfgFacing, els.quality, els.cfgFps].forEach((s) => (s.style.display = needCamera() ? "" : "none"));
+    // Nút fullscreen trên cùng: hiện khi có khung remote (host facecam / call)
+    els.btnFsTop.style.display = showRemote ? "" : "none";
   }
 
   function refreshModeUI() {
@@ -516,7 +520,24 @@
     const call = peer.call(remoteId, localStream);
     if (!call) { showError("Không thể bắt đầu cuộc gọi. Thử lại."); setStatus("idle", "Sẵn sàng"); return; }
     setupCall(call);
+    boostBitrate(call);
     setupDataConn(peer.connect(remoteId));
+  }
+
+  // Nâng trần bitrate video (mặc định WebRTC chỉ ~1–2.5 Mbps → mờ)
+  function boostBitrate(call) {
+    const target = els.quality.value === "hd" ? 4_000_000 : 1_800_000;
+    const trySet = () => {
+      const pc = call.peerConnection;
+      if (!pc) return setTimeout(trySet, 400);
+      const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
+      if (!sender) return setTimeout(trySet, 400);
+      const params = sender.getParameters();
+      if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+      params.encodings[0].maxBitrate = target;
+      sender.setParameters(params).catch((e) => console.warn("setParameters:", e));
+    };
+    setTimeout(trySet, 600);
   }
 
   function setupCall(call) {
@@ -629,6 +650,7 @@
   els.btnMic.addEventListener("click", toggleMic);
   els.btnCam.addEventListener("click", toggleCam);
   els.btnFullscreen.addEventListener("click", toggleFullscreen);
+  els.btnFsTop.addEventListener("click", toggleFullscreen);
   els.btnSend.addEventListener("click", sendChat);
   els.chatInput.addEventListener("keydown", (e) => { if (e.key === "Enter") sendChat(); });
   els.remoteId.addEventListener("keydown", (e) => { if (e.key === "Enter" && !els.btnCall.disabled) makeCall(); });
