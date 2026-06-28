@@ -33,6 +33,17 @@
   .logo h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
   .logo .sub { font-size: 12px; opacity: 0.45; margin-top: 2px; }
 
+  /* Mode toggle */
+  .mode-toggle {
+    display: inline-flex; background: #141418; border: 1px solid #222;
+    border-radius: 12px; padding: 4px; gap: 4px; align-self: flex-start;
+  }
+  .mode-toggle button {
+    background: transparent; color: #888; padding: 9px 18px;
+    border-radius: 9px; font-size: 13px; font-weight: 600; border: none; cursor: pointer;
+  }
+  .mode-toggle button.active { background: var(--accent); color: #fff; }
+
   /* Status pill */
   .status {
     display: inline-flex; align-items: center; gap: 9px;
@@ -58,6 +69,7 @@
 
   /* Video grid */
   .video-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .video-grid.single { grid-template-columns: 1fr; }
   @media (max-width: 640px) { .video-grid { grid-template-columns: 1fr; } }
 
   .video-box {
@@ -76,7 +88,6 @@
     justify-content: center; color: #555; font-size: 13px;
     text-align: center; padding: 18px;
   }
-  /* Fullscreen button on remote */
   .fs-btn {
     position: absolute; top: 10px; right: 10px;
     background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.12);
@@ -96,6 +107,7 @@
     font-size: 12px; font-weight: 600; text-transform: uppercase;
     letter-spacing: 1px; color: #3b82f6; margin-bottom: 14px;
   }
+  .card.hidden { display: none; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
   /* QR */
@@ -112,15 +124,11 @@
     border: 1px solid #222; padding: 9px 11px; border-radius: 9px; margin-top: 10px;
   }
 
-  /* Inputs / buttons */
   input[type=text], select {
     background: #0d0d12; border: 1px solid #222; color: #fff;
     padding: 11px 13px; border-radius: 10px; font-size: 14px;
   }
-  input[type=text] {
-    flex: 1; min-width: 180px;
-    font-family: ui-monospace, Menlo, monospace;
-  }
+  input[type=text] { flex: 1; min-width: 180px; font-family: ui-monospace, Menlo, monospace; }
   input[type=text]:focus, select:focus { outline: none; border-color: var(--accent); }
 
   .id-value {
@@ -143,7 +151,6 @@
 
   .hint { color: #555; font-size: 12px; margin-top: 10px; }
 
-  /* Chat */
   .chat-log {
     background: #0d0d12; border: 1px solid #222; border-radius: 10px;
     height: 150px; overflow-y: auto; padding: 11px; margin-bottom: 11px;
@@ -166,21 +173,27 @@
     </div>
   </div>
 
+  <!-- Mode toggle (chỉ host) -->
+  <div class="mode-toggle" id="mode-toggle">
+    <button data-mode="facecam" class="active">📷 FaceCam</button>
+    <button data-mode="call">🎥 Video Call</button>
+  </div>
+
   <div id="banner" class="banner"></div>
 
   <div class="status">
     <span id="dot" class="dot idle"></span>
-    <span id="status-text">Chưa bật camera</span>
+    <span id="status-text">Chưa tạo phòng</span>
   </div>
 
   <!-- Video grid -->
-  <div class="video-grid">
-    <div class="video-box">
+  <div class="video-grid" id="video-grid">
+    <div class="video-box" id="local-box">
       <video id="local-video" autoplay muted playsinline></video>
       <div id="local-placeholder" class="placeholder">Camera của bạn sẽ hiển thị ở đây</div>
       <span class="label">Bạn</span>
     </div>
-    <div class="video-box">
+    <div class="video-box" id="remote-box">
       <video id="remote-video" autoplay playsinline></video>
       <div id="remote-placeholder" class="placeholder">Video đối phương</div>
       <button id="btn-fullscreen" class="fs-btn" title="Toàn màn hình (cam ảo)">⛶</button>
@@ -188,11 +201,11 @@
     </div>
   </div>
 
-  <!-- Step 1: camera + config -->
+  <!-- Step 1: tạo phòng / bật camera -->
   <div class="card">
-    <h2>1. Bật camera</h2>
+    <h2 id="step1-title">1. Tạo phòng</h2>
     <div class="row">
-      <button id="btn-start">▶ Bật camera</button>
+      <button id="btn-start">🚪 Tạo phòng</button>
       <select id="cfg-facing">
         <option value="user">🤳 Cam trước</option>
         <option value="environment">📷 Cam sau</option>
@@ -208,7 +221,7 @@
         <option value="60">60 fps</option>
       </select>
     </div>
-    <div class="hint">Trình duyệt sẽ hỏi quyền camera + micro lần đầu. Trên điện thoại chọn cam trước/sau tùy nhu cầu.</div>
+    <div class="hint" id="step1-hint">FaceCam: tạo phòng rồi cho điện thoại quét QR để stream cam sang đây — bạn không cần bật camera.</div>
   </div>
 
   <!-- QR room -->
@@ -244,7 +257,7 @@
   </div>
 
   <!-- In-call controls -->
-  <div class="card">
+  <div class="card" id="controls-card">
     <h2>🎛️ Điều khiển</h2>
     <div class="row">
       <button id="btn-mic" class="secondary" disabled>🎤 Tắt mic</button>
@@ -270,17 +283,22 @@
 (function () {
   "use strict";
 
-  // ---- DOM refs ----
   const $ = (id) => document.getElementById(id);
   const els = {
+    modeToggle: $("mode-toggle"),
     banner: $("banner"),
     dot: $("dot"),
     statusText: $("status-text"),
+    grid: $("video-grid"),
+    localBox: $("local-box"),
+    remoteBox: $("remote-box"),
     localVideo: $("local-video"),
     remoteVideo: $("remote-video"),
     localPlaceholder: $("local-placeholder"),
     remotePlaceholder: $("remote-placeholder"),
     btnFullscreen: $("btn-fullscreen"),
+    step1Title: $("step1-title"),
+    step1Hint: $("step1-hint"),
     btnStart: $("btn-start"),
     cfgFacing: $("cfg-facing"),
     quality: $("quality"),
@@ -290,6 +308,7 @@
     remoteId: $("remote-id"),
     btnCall: $("btn-call"),
     btnHangup: $("btn-hangup"),
+    controlsCard: $("controls-card"),
     btnMic: $("btn-mic"),
     btnCam: $("btn-cam"),
     chatLog: $("chat-log"),
@@ -310,16 +329,18 @@
   let camOn = true;
   let qr = null;
 
-  // ?call=<peerId> → đây là người vào phòng (vd: điện thoại quét QR)
   const params = new URLSearchParams(location.search);
   const joinTarget = params.get("call");
   const isJoiner = !!joinTarget;
+  // mode: 'facecam' | 'call'. Joiner lấy mode từ query do host nhúng vào QR.
+  let mode = isJoiner ? (params.get("mode") || "call") : "facecam";
+
+  // Trong facecam: host KHÔNG bật cam (chỉ xem); joiner (phone) là nguồn cam.
+  function hostNeedsCamera() { return mode === "call"; }
+  function needCamera() { return isJoiner || hostNeedsCamera(); }
 
   // ---- Helpers ----
-  function setStatus(state, text) {
-    els.dot.className = "dot " + state;
-    els.statusText.textContent = text;
-  }
+  function setStatus(state, text) { els.dot.className = "dot " + state; els.statusText.textContent = text; }
   function showError(msg) { els.banner.textContent = "⚠️ " + msg; els.banner.classList.add("show"); }
   function clearError() { els.banner.classList.remove("show"); }
 
@@ -344,9 +365,48 @@
     };
   }
 
-  // ---- 1. Start camera + init peer ----
-  async function startCamera() {
+  // ---- Layout: hiện/ẩn box theo mode + role ----
+  function applyLayout() {
+    const showLocal = isJoiner ? true : hostNeedsCamera();
+    const showRemote = isJoiner ? (mode === "call") : true;
+    els.localBox.style.display = showLocal ? "" : "none";
+    els.remoteBox.style.display = showRemote ? "" : "none";
+    els.grid.classList.toggle("single", !(showLocal && showRemote));
+    els.controlsCard.classList.toggle("hidden", !showLocal);
+    // Camera config chỉ cần khi thiết bị này bật cam
+    [els.cfgFacing, els.quality, els.cfgFps].forEach((s) => (s.style.display = needCamera() ? "" : "none"));
+  }
+
+  function refreshModeUI() {
+    [...els.modeToggle.children].forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+    if (mode === "facecam") {
+      els.step1Title.textContent = "1. Tạo phòng";
+      els.btnStart.textContent = "🚪 Tạo phòng";
+      els.step1Hint.textContent = "FaceCam: tạo phòng rồi cho điện thoại quét QR để stream cam sang đây — bạn không cần bật camera.";
+    } else {
+      els.step1Title.textContent = "1. Bật camera & tạo phòng";
+      els.btnStart.textContent = "▶ Bật camera & tạo phòng";
+      els.step1Hint.textContent = "Video Call: bật camera của bạn, tạo phòng, rồi gọi 2 chiều như bình thường.";
+    }
+    applyLayout();
+  }
+
+  // ---- Primary action ----
+  async function onPrimary() {
     clearError();
+    if (needCamera()) {
+      const ok = await startCamera();
+      if (!ok) return;
+    } else {
+      els.localPlaceholder.style.display = "none";
+    }
+    els.btnStart.disabled = true;
+    els.modeToggle.style.display = "none";
+    initPeer();
+  }
+
+  // ---- Bật camera ----
+  async function startCamera() {
     els.btnStart.disabled = true;
     setStatus("connecting", "Đang bật camera...");
     try {
@@ -361,9 +421,8 @@
         showError("Không thể truy cập camera: " + err.message);
       }
       setStatus("error", "Lỗi camera");
-      return;
+      return false;
     }
-
     els.localVideo.srcObject = localStream;
     els.localPlaceholder.style.display = "none";
     els.quality.disabled = true;
@@ -371,11 +430,10 @@
     els.cfgFps.disabled = true;
     els.btnMic.disabled = false;
     els.btnCam.disabled = false;
-
-    initPeer();
+    return true;
   }
 
-  // ---- 2. Init PeerJS ----
+  // ---- Init PeerJS ----
   function initPeer() {
     setStatus("connecting", "Đang kết nối tới máy chủ signaling...");
     peer = new Peer();
@@ -392,14 +450,16 @@
         makeCall();
       } else {
         showRoomQR(id);
-        setStatus("idle", "Sẵn sàng — cho điện thoại quét QR hoặc gọi thủ công");
+        setStatus("idle", mode === "facecam"
+          ? "Phòng đã sẵn sàng — cho điện thoại quét QR để stream cam"
+          : "Sẵn sàng — quét QR hoặc gọi thủ công");
       }
     });
 
     peer.on("call", (call) => {
       if (currentCall) { call.close(); return; }
       setStatus("connecting", "Cuộc gọi đến — đang trả lời...");
-      call.answer(localStream);
+      call.answer(localStream || undefined); // facecam host: answer không gửi cam
       setupCall(call);
     });
 
@@ -431,6 +491,7 @@
     const url = new URL(location.href);
     url.search = ""; url.hash = "";
     url.searchParams.set("call", id);
+    url.searchParams.set("mode", mode);
     return url.toString();
   }
   function showRoomQR(id) {
@@ -445,14 +506,13 @@
     }
   }
 
-  // ---- 3. Call ----
+  // ---- Call ----
   function makeCall() {
     const remoteId = els.remoteId.value.trim();
     if (!remoteId) { showError("Hãy nhập Peer ID của đối phương."); return; }
     if (remoteId === els.myId.textContent) { showError("Không thể tự gọi chính mình."); return; }
     clearError();
     setStatus("connecting", "Đang gọi...");
-
     const call = peer.call(remoteId, localStream);
     if (!call) { showError("Không thể bắt đầu cuộc gọi. Thử lại."); setStatus("idle", "Sẵn sàng"); return; }
     setupCall(call);
@@ -514,7 +574,7 @@
     els.remoteId.disabled = false;
   }
 
-  // ---- In-call toggles ----
+  // ---- Toggles ----
   function toggleMic() {
     if (!localStream) return;
     micOn = !micOn;
@@ -534,7 +594,7 @@
 
   // ---- Fullscreen (cam ảo) ----
   function toggleFullscreen() {
-    const box = els.remoteVideo.parentElement;
+    const box = els.remoteBox;
     if (!document.fullscreenElement) {
       (box.requestFullscreen || box.webkitRequestFullscreen || box.msRequestFullscreen).call(box).catch(() => {});
     } else {
@@ -542,7 +602,6 @@
     }
   }
 
-  // ---- Copy ID ----
   async function copyText(text, btn, label) {
     if (!text || text === "—") return;
     try { await navigator.clipboard.writeText(text); }
@@ -551,13 +610,18 @@
       ta.value = text; document.body.appendChild(ta); ta.select();
       document.execCommand("copy"); document.body.removeChild(ta);
     }
-    const orig = btn.textContent;
     btn.textContent = "Đã copy ✓";
-    setTimeout(() => (btn.textContent = label || orig), 1500);
+    setTimeout(() => (btn.textContent = label), 1500);
   }
 
   // ---- Wire events ----
-  els.btnStart.addEventListener("click", startCamera);
+  els.modeToggle.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    mode = b.dataset.mode;
+    refreshModeUI();
+  });
+  els.btnStart.addEventListener("click", onPrimary);
   els.btnCopy.addEventListener("click", () => copyText(els.myId.textContent, els.btnCopy, "Copy"));
   els.btnCopyLink.addEventListener("click", () => copyText(els.qrLink.textContent, els.btnCopyLink, "Copy link"));
   els.btnCall.addEventListener("click", makeCall);
@@ -574,11 +638,19 @@
     if (peer) try { peer.destroy(); } catch (e) {}
   });
 
-  // Người vào phòng qua QR: mặc định cam sau + nhắc bấm để bật cam
+  // ---- Init UI theo role ----
   if (isJoiner) {
+    els.modeToggle.style.display = "none";
     els.cfgFacing.value = "environment";
+    els.step1Title.textContent = "1. Vào phòng";
     els.btnStart.textContent = "▶ Vào phòng & bật camera";
+    els.step1Hint.textContent = mode === "facecam"
+      ? "Bạn là camera. Bấm để bật cam và stream sang màn hình bên kia."
+      : "Bấm để bật cam và vào cuộc gọi.";
     setStatus("idle", "Bấm nút để vào phòng và stream camera");
+    applyLayout();
+  } else {
+    refreshModeUI();
   }
 
   if (!window.isSecureContext) {
