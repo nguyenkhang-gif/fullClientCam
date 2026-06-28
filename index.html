@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>P2P Video Call</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #1a1d24;
+      --border: #2a2f3a;
+      --text: #e7eaf0;
+      --muted: #9aa3b2;
+      --accent: #4f8cff;
+      --accent-hover: #3b7bff;
+      --danger: #ff5d5d;
+      --danger-hover: #ff4242;
+      --ok: #34d399;
+      --warn: #fbbf24;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .wrap {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px 16px 48px;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin: 8px 0 4px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+    }
+
+    /* Status bar */
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 0.92rem;
+    }
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--muted);
+      transition: background 0.2s;
+    }
+    .dot.idle       { background: var(--muted); }
+    .dot.connecting { background: var(--warn); animation: pulse 1s infinite; }
+    .dot.connected  { background: var(--ok); }
+    .dot.error      { background: var(--danger); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.35; }
+    }
+
+    /* Video grid */
+    .video-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 600px) {
+      .video-grid { grid-template-columns: 1fr; }
+    }
+
+    .video-box {
+      background: #111;
+      aspect-ratio: 16 / 9;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid var(--border);
+    }
+    .video-box video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .video-box .label {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-size: 0.78rem;
+      padding: 3px 9px;
+      border-radius: 6px;
+    }
+    .video-box .placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-align: center;
+      padding: 16px;
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .panel h2 {
+      font-size: 0.95rem;
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    /* My ID box */
+    .id-box {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .id-value {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      background: #11141a;
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      border-radius: 8px;
+      flex: 1;
+      min-width: 180px;
+      font-size: 0.95rem;
+      user-select: all;
+      word-break: break-all;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 180px;
+      background: #11141a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    button:hover:not(:disabled) { background: var(--accent-hover); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    button.secondary {
+      background: #2a2f3a;
+    }
+    button.secondary:hover:not(:disabled) { background: #353b48; }
+
+    button.danger { background: var(--danger); }
+    button.danger:hover:not(:disabled) { background: var(--danger-hover); }
+
+    button.active { background: var(--ok); }
+
+    /* Toast / error banner */
+    .banner {
+      display: none;
+      background: #2a1416;
+      border: 1px solid var(--danger);
+      color: #ffd6d6;
+      padding: 12px 16px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      font-size: 0.9rem;
+      line-height: 1.4;
+    }
+    .banner.show { display: block; }
+
+    /* Chat */
+    .chat-log {
+      background: #11141a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      height: 160px;
+      overflow-y: auto;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+    .chat-log .msg { margin-bottom: 6px; }
+    .chat-log .me   { color: var(--accent); }
+    .chat-log .them { color: var(--ok); }
+    .chat-log .sys  { color: var(--muted); font-style: italic; }
+
+    select {
+      background: #11141a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.92rem;
+    }
+
+    .hint { color: var(--muted); font-size: 0.82rem; margin-top: 8px; }
+
+    /* QR */
+    .qr-wrap {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    #qrcode {
+      background: #fff;
+      padding: 10px;
+      border-radius: 10px;
+      width: 168px;
+      height: 168px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #qrcode img, #qrcode canvas { display: block; }
+    .qr-info { flex: 1; min-width: 200px; }
+    .qr-link {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 0.8rem;
+      color: var(--accent);
+      word-break: break-all;
+      background: #11141a;
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>📹 P2P Video Call</h1>
+    <div class="subtitle">Gọi video trực tiếp giữa 2 trình duyệt — không qua server trung gian.</div>
+
+    <div id="banner" class="banner"></div>
+
+    <!-- Status -->
+    <div class="status">
+      <span id="dot" class="dot idle"></span>
+      <span id="status-text">Chưa bật camera</span>
+    </div>
+
+    <!-- Video grid -->
+    <div class="video-grid">
+      <div class="video-box">
+        <video id="local-video" autoplay muted playsinline></video>
+        <div id="local-placeholder" class="placeholder">Camera của bạn sẽ hiển thị ở đây</div>
+        <span class="label">Bạn</span>
+      </div>
+      <div class="video-box">
+        <video id="remote-video" autoplay playsinline></video>
+        <div id="remote-placeholder" class="placeholder">Video đối phương</div>
+        <span class="label">Đối phương</span>
+      </div>
+    </div>
+
+    <!-- Step 1: camera + ID -->
+    <div class="panel">
+      <h2>1. Bật camera</h2>
+      <div class="row">
+        <button id="btn-start">Bật camera</button>
+        <select id="quality">
+          <option value="hd">HD (1280×720)</option>
+          <option value="sd" selected>SD (640×360)</option>
+        </select>
+      </div>
+      <div class="hint">Trình duyệt sẽ hỏi quyền truy cập camera + micro lần đầu.</div>
+    </div>
+
+    <!-- My ID -->
+    <div class="panel">
+      <h2>2. ID của bạn — gửi cho người kia</h2>
+      <div class="id-box">
+        <span id="my-id" class="id-value">—</span>
+        <button id="btn-copy" class="secondary" disabled>Copy</button>
+      </div>
+    </div>
+
+    <!-- QR room -->
+    <div class="panel" id="qr-panel" style="display:none;">
+      <h2>📱 Quét QR để vào phòng từ điện thoại</h2>
+      <div class="qr-wrap">
+        <div id="qrcode"></div>
+        <div class="qr-info">
+          <div>Mở camera điện thoại (hoặc app quét QR) → quét mã này. Điện thoại sẽ tự vào phòng và stream camera qua đây.</div>
+          <div class="qr-link" id="qr-link">—</div>
+          <button id="btn-copy-link" class="secondary" style="margin-top:8px;">Copy link</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Call -->
+    <div class="panel">
+      <h2>3. Gọi tới ID đối phương (thủ công)</h2>
+      <div class="row">
+        <input id="remote-id" type="text" placeholder="Dán Peer ID đối phương..." disabled />
+        <button id="btn-call" disabled>Gọi</button>
+        <button id="btn-hangup" class="danger" disabled>Cúp máy</button>
+      </div>
+    </div>
+
+    <!-- In-call controls -->
+    <div class="panel">
+      <h2>Điều khiển</h2>
+      <div class="row">
+        <button id="btn-mic" class="secondary" disabled>🎤 Tắt mic</button>
+        <button id="btn-cam" class="secondary" disabled>📷 Tắt camera</button>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div class="panel">
+      <h2>💬 Chat</h2>
+      <div id="chat-log" class="chat-log"></div>
+      <div class="row">
+        <input id="chat-input" type="text" placeholder="Nhập tin nhắn..." disabled style="font-family: system-ui;" />
+        <button id="btn-send" disabled>Gửi</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script>
+  (function () {
+    "use strict";
+
+    // ---- DOM refs ----
+    const $ = (id) => document.getElementById(id);
+    const els = {
+      banner: $("banner"),
+      dot: $("dot"),
+      statusText: $("status-text"),
+      localVideo: $("local-video"),
+      remoteVideo: $("remote-video"),
+      localPlaceholder: $("local-placeholder"),
+      remotePlaceholder: $("remote-placeholder"),
+      btnStart: $("btn-start"),
+      quality: $("quality"),
+      myId: $("my-id"),
+      btnCopy: $("btn-copy"),
+      remoteId: $("remote-id"),
+      btnCall: $("btn-call"),
+      btnHangup: $("btn-hangup"),
+      btnMic: $("btn-mic"),
+      btnCam: $("btn-cam"),
+      chatLog: $("chat-log"),
+      chatInput: $("chat-input"),
+      btnSend: $("btn-send"),
+      qrPanel: $("qr-panel"),
+      qrcode: $("qrcode"),
+      qrLink: $("qr-link"),
+      btnCopyLink: $("btn-copy-link"),
+    };
+
+    // ---- State ----
+    let peer = null;
+    let localStream = null;
+    let currentCall = null;
+    let dataConn = null;
+    let micOn = true;
+    let camOn = true;
+    let qr = null;
+
+    // ?call=<peerId> → đây là người vào phòng (vd: điện thoại quét QR)
+    const params = new URLSearchParams(location.search);
+    const joinTarget = params.get("call");
+    const isJoiner = !!joinTarget;
+
+    // ---- Helpers ----
+    function setStatus(state, text) {
+      els.dot.className = "dot " + state;
+      els.statusText.textContent = text;
+    }
+
+    function showError(msg) {
+      els.banner.textContent = "⚠️ " + msg;
+      els.banner.classList.add("show");
+    }
+    function clearError() {
+      els.banner.classList.remove("show");
+    }
+
+    function logChat(text, cls) {
+      const div = document.createElement("div");
+      div.className = "msg " + (cls || "sys");
+      div.textContent = text;
+      els.chatLog.appendChild(div);
+      els.chatLog.scrollTop = els.chatLog.scrollHeight;
+    }
+
+    function getConstraints() {
+      const hd = els.quality.value === "hd";
+      return {
+        video: hd
+          ? { width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { width: { ideal: 640 }, height: { ideal: 360 } },
+        audio: true,
+      };
+    }
+
+    // ---- 1. Start camera + init peer ----
+    async function startCamera() {
+      clearError();
+      els.btnStart.disabled = true;
+      setStatus("connecting", "Đang bật camera...");
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia(getConstraints());
+      } catch (err) {
+        els.btnStart.disabled = false;
+        if (err.name === "NotAllowedError" || err.name === "SecurityError") {
+          showError("Bạn đã từ chối quyền camera/micro. Hãy bấm vào biểu tượng khóa 🔒 trên thanh địa chỉ → cho phép Camera & Microphone, rồi thử lại.");
+        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+          showError("Không tìm thấy camera hoặc micro trên thiết bị này.");
+        } else {
+          showError("Không thể truy cập camera: " + err.message);
+        }
+        setStatus("error", "Lỗi camera");
+        return;
+      }
+
+      els.localVideo.srcObject = localStream;
+      els.localPlaceholder.style.display = "none";
+      els.quality.disabled = true;
+      els.btnMic.disabled = false;
+      els.btnCam.disabled = false;
+
+      initPeer();
+    }
+
+    // ---- 2. Init PeerJS ----
+    function initPeer() {
+      setStatus("connecting", "Đang kết nối tới máy chủ signaling...");
+      peer = new Peer(); // PeerJS cloud server mặc định
+
+      peer.on("open", (id) => {
+        els.myId.textContent = id;
+        els.btnCopy.disabled = false;
+        els.remoteId.disabled = false;
+        els.btnCall.disabled = false;
+
+        if (isJoiner) {
+          // Vào phòng có sẵn → tự gọi host
+          setStatus("connecting", "Đang vào phòng & stream camera...");
+          els.remoteId.value = joinTarget;
+          makeCall();
+        } else {
+          // Host → hiện QR để người khác quét vào phòng
+          showRoomQR(id);
+          setStatus("idle", "Sẵn sàng — cho điện thoại quét QR hoặc gọi thủ công");
+        }
+      });
+
+      // Incoming media call → auto answer
+      peer.on("call", (call) => {
+        if (currentCall) {
+          call.close();
+          return;
+        }
+        setStatus("connecting", "Cuộc gọi đến — đang trả lời...");
+        call.answer(localStream);
+        setupCall(call);
+      });
+
+      // Incoming data connection (chat)
+      peer.on("connection", (conn) => {
+        setupDataConn(conn);
+      });
+
+      peer.on("error", (err) => {
+        console.error("Peer error:", err);
+        if (err.type === "peer-unavailable") {
+          showError("ID không tồn tại hoặc đối phương chưa online. Kiểm tra lại Peer ID.");
+          setStatus("idle", "Sẵn sàng");
+          resetCallButtons();
+        } else if (err.type === "network" || err.type === "server-error" || err.type === "socket-error") {
+          showError("Mất kết nối tới máy chủ signaling. Kiểm tra internet rồi tải lại trang.");
+          setStatus("error", "Mất kết nối");
+        } else {
+          showError("Lỗi: " + err.message);
+          setStatus("error", "Lỗi");
+        }
+      });
+
+      peer.on("disconnected", () => {
+        setStatus("connecting", "Mất kết nối server — đang thử lại...");
+        try { peer.reconnect(); } catch (e) {}
+      });
+    }
+
+    // ---- QR room ----
+    function buildJoinLink(id) {
+      const url = new URL(location.href);
+      url.search = "";
+      url.hash = "";
+      url.searchParams.set("call", id);
+      return url.toString();
+    }
+
+    function showRoomQR(id) {
+      const link = buildJoinLink(id);
+      els.qrPanel.style.display = "block";
+      els.qrLink.textContent = link;
+      els.qrcode.innerHTML = "";
+      if (typeof QRCode !== "undefined") {
+        qr = new QRCode(els.qrcode, {
+          text: link,
+          width: 148,
+          height: 148,
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+      } else {
+        els.qrcode.textContent = "QR lib lỗi — dùng link bên dưới";
+      }
+    }
+
+    // ---- 3. Call ----
+    function makeCall() {
+      const remoteId = els.remoteId.value.trim();
+      if (!remoteId) {
+        showError("Hãy nhập Peer ID của đối phương.");
+        return;
+      }
+      if (remoteId === els.myId.textContent) {
+        showError("Không thể tự gọi chính mình.");
+        return;
+      }
+      clearError();
+      setStatus("connecting", "Đang gọi...");
+
+      const call = peer.call(remoteId, localStream);
+      if (!call) {
+        showError("Không thể bắt đầu cuộc gọi. Thử lại.");
+        setStatus("idle", "Sẵn sàng");
+        return;
+      }
+      setupCall(call);
+
+      // Mở data channel cho chat
+      const conn = peer.connect(remoteId);
+      setupDataConn(conn);
+    }
+
+    function setupCall(call) {
+      currentCall = call;
+      els.btnCall.disabled = true;
+      els.btnHangup.disabled = false;
+      els.remoteId.disabled = true;
+
+      call.on("stream", (remoteStream) => {
+        els.remoteVideo.srcObject = remoteStream;
+        els.remotePlaceholder.style.display = "none";
+        setStatus("connected", "Đã kết nối ✅");
+        // iOS: cần play() sau user gesture (đã có từ nút bấm trước đó)
+        els.remoteVideo.play().catch(() => {});
+      });
+
+      call.on("close", () => {
+        endCall("Đối phương đã cúp máy.");
+      });
+
+      call.on("error", (err) => {
+        console.error("Call error:", err);
+        showError("Lỗi cuộc gọi: " + (err.message || err.type));
+        endCall();
+      });
+    }
+
+    // ---- Data channel (chat) ----
+    function setupDataConn(conn) {
+      dataConn = conn;
+      conn.on("open", () => {
+        els.chatInput.disabled = false;
+        els.btnSend.disabled = false;
+        logChat("— Đã kết nối chat —", "sys");
+      });
+      conn.on("data", (data) => {
+        logChat("Họ: " + data, "them");
+      });
+      conn.on("close", () => {
+        els.chatInput.disabled = true;
+        els.btnSend.disabled = true;
+      });
+      conn.on("error", (err) => console.error("Data conn error:", err));
+    }
+
+    function sendChat() {
+      const text = els.chatInput.value.trim();
+      if (!text || !dataConn || !dataConn.open) return;
+      dataConn.send(text);
+      logChat("Bạn: " + text, "me");
+      els.chatInput.value = "";
+    }
+
+    // ---- Hang up / reset ----
+    function endCall(reason) {
+      if (currentCall) {
+        try { currentCall.close(); } catch (e) {}
+        currentCall = null;
+      }
+      if (dataConn) {
+        try { dataConn.close(); } catch (e) {}
+        dataConn = null;
+      }
+      els.remoteVideo.srcObject = null;
+      els.remotePlaceholder.style.display = "flex";
+      els.chatInput.disabled = true;
+      els.btnSend.disabled = true;
+      resetCallButtons();
+      setStatus("idle", reason ? reason + " Sẵn sàng." : "Đã cúp máy. Sẵn sàng.");
+      if (reason) logChat(reason, "sys");
+    }
+
+    function resetCallButtons() {
+      els.btnCall.disabled = false;
+      els.btnHangup.disabled = true;
+      els.remoteId.disabled = false;
+    }
+
+    // ---- In-call toggles ----
+    function toggleMic() {
+      if (!localStream) return;
+      micOn = !micOn;
+      localStream.getAudioTracks().forEach((t) => (t.enabled = micOn));
+      els.btnMic.textContent = micOn ? "🎤 Tắt mic" : "🔇 Bật mic";
+      els.btnMic.classList.toggle("active", !micOn);
+    }
+
+    function toggleCam() {
+      if (!localStream) return;
+      camOn = !camOn;
+      localStream.getVideoTracks().forEach((t) => (t.enabled = camOn));
+      els.btnCam.textContent = camOn ? "📷 Tắt camera" : "📷 Bật camera";
+      els.btnCam.classList.toggle("active", !camOn);
+      els.localPlaceholder.style.display = camOn ? "none" : "flex";
+      els.localPlaceholder.textContent = camOn ? "" : "Camera đang tắt";
+    }
+
+    // ---- Copy ID ----
+    async function copyId() {
+      const id = els.myId.textContent;
+      if (!id || id === "—") return;
+      try {
+        await navigator.clipboard.writeText(id);
+        els.btnCopy.textContent = "Đã copy ✓";
+        setTimeout(() => (els.btnCopy.textContent = "Copy"), 1500);
+      } catch (e) {
+        // Fallback
+        const ta = document.createElement("textarea");
+        ta.value = id;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        els.btnCopy.textContent = "Đã copy ✓";
+        setTimeout(() => (els.btnCopy.textContent = "Copy"), 1500);
+      }
+    }
+
+    // ---- Wire events ----
+    els.btnStart.addEventListener("click", startCamera);
+    els.btnCopy.addEventListener("click", copyId);
+    els.btnCall.addEventListener("click", makeCall);
+    els.btnHangup.addEventListener("click", () => endCall());
+    els.btnMic.addEventListener("click", toggleMic);
+    els.btnCam.addEventListener("click", toggleCam);
+    els.btnSend.addEventListener("click", sendChat);
+    els.btnCopyLink.addEventListener("click", async () => {
+      const link = els.qrLink.textContent;
+      if (!link || link === "—") return;
+      try {
+        await navigator.clipboard.writeText(link);
+        els.btnCopyLink.textContent = "Đã copy ✓";
+        setTimeout(() => (els.btnCopyLink.textContent = "Copy link"), 1500);
+      } catch (e) {}
+    });
+    els.chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendChat();
+    });
+    els.remoteId.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !els.btnCall.disabled) makeCall();
+    });
+
+    // Cleanup on unload
+    window.addEventListener("beforeunload", () => {
+      if (currentCall) try { currentCall.close(); } catch (e) {}
+      if (peer) try { peer.destroy(); } catch (e) {}
+    });
+
+    // Người vào phòng qua QR: nhắc bấm để bật cam (mobile cần user gesture)
+    if (isJoiner) {
+      els.btnStart.textContent = "Vào phòng & bật camera";
+      setStatus("idle", "Bấm nút để vào phòng và stream camera");
+    }
+
+    // Check secure context
+    if (!window.isSecureContext) {
+      showError("Trang cần chạy trên HTTPS hoặc localhost để truy cập camera. Mở qua https:// hoặc http://localhost.");
+    }
+  })();
+  </script>
+</body>
+</html>
